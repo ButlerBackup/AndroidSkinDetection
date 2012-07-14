@@ -1,0 +1,353 @@
+package dev.mcidclan.tmagicp;
+
+import android.util.Log;
+
+import java.util.List;
+import java.io.IOException;
+import android.content.Context;
+import android.hardware.Camera;
+import android.graphics.ImageFormat;
+import android.hardware.Camera.PreviewCallback;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+
+import android.graphics.Bitmap;
+import android.graphics.Paint;
+import android.graphics.Canvas;
+import java.nio.ByteBuffer;
+
+
+public final class Preview extends SurfaceView
+implements SurfaceHolder.Callback
+{
+    private SurfaceHolder holder;
+    private Camera camera;
+
+    private Paint paint;
+
+    private ByteBuffer buffer;
+
+    private boolean enablestate;
+
+    private int weightx;
+    private int weighty;
+
+    private int cursorposx;
+    private int cursorposy;
+
+    private int bufferwidth;
+    private int bufferheight;
+
+
+    public Preview(Context context)
+    {
+        super(context);
+
+        this.enablestate = false;
+
+        this.holder = getHolder();
+        this.holder.addCallback(this);
+        this.holder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+
+        this.paint = new Paint();
+        this.paint.setColor(0xFF0000FF);
+
+        this.weightx = 0;
+        this.weighty = 0;
+
+        this.cursorposx = 0;
+        this.cursorposy = 0;
+    }
+
+
+    private PreviewCallback previewcallback = new PreviewCallback()
+    {
+        public void onPreviewFrame(byte[] data, Camera camera)
+        {
+            if(camera != null)
+            {
+                int cx = Preview.this.bufferwidth / 16;
+                int cy = Preview.this.bufferheight / 16;
+                int cs = (cx * cy) - Preview.this.bufferwidth / 16;
+
+                Preview.this.gridEval(data, cx, cy, cs);
+                Preview.this.evalEnableState(cx, cy);
+
+                if(Preview.this.enablestate)
+                {
+                    Preview.this.evalWeightCenter(cx, cy);
+                }
+            }
+        }
+    }; 
+
+
+    /*
+     * Checks 12 fragments of the cloud to enable the tracker.
+     */
+    private void evalEnableState(final int cxsize, final int cysize)
+    {
+        int i;
+        int j;
+        int k;
+        int a;
+
+        a = 0;
+        k = 0;
+        j = 0;
+        while(j < this.bufferheight)
+        {
+            i = 0;
+            while(i < this.bufferwidth)
+            {
+                k = i + (j * this.bufferwidth);
+
+                if(this.buffer.get(k) != 0)
+                {
+                    a++;
+                }
+
+                i += cxsize;
+            }
+            j += cysize;
+        }
+
+        if(a > 12)
+        {
+            this.enablestate = true;
+        }        
+        else
+        {
+            this.enablestate = false;
+        }
+    }
+
+
+    /*
+     * Finds the center of the pixelized cloud.
+     */
+    private void evalWeightCenter(final int cxsize, final int cysize)
+    {
+        int i;
+        int j;
+        int k;
+
+        this.weightx = 0;
+        this.weighty = 0;
+
+        k = 0;
+        j = 0;
+        while(j < this.bufferheight)
+        {
+            i = 0;
+            while(i < this.bufferwidth)
+            {
+                if(this.buffer.get(i + (j * this.bufferwidth)) == (byte)0xFF)
+                {
+                    this.weightx += i;
+                    this.weighty += j;
+                    k++;
+                }
+                i += cxsize;
+            }
+            j += cysize;
+        }
+
+        if(k != 0)
+        {
+            this.weightx /= k;
+            this.weighty /= k;
+        }
+    }
+
+
+    /*
+     * (3 essential steps)
+     * (1) Finds the cloud corresponding to skin
+     * (2-3) Apply a grid of a monochrome pixelization on it.
+     */
+    private void gridEval(byte[] in, final int cXsize, final int cYsize,
+    final int pThresh)
+    {
+            int px;
+        int py;
+        int pe;
+        int acum;
+
+            int x;
+        int y;
+        int s;
+
+        int pr;
+        int pb;
+
+        int currcr;
+        int currcb;
+
+        int W_ = this.bufferwidth;
+        int H_ = this.bufferheight;
+
+        int ybuffersize = W_ * H_ * 4;
+
+            for(x = 0; x < W_; x += cXsize)
+        {
+                    for(y = 0; y < H_; y += cYsize)
+            {
+                            px = x;
+                            py = y * W_;
+                            pe = py + cYsize * W_;
+
+                            acum = 0;
+
+                            while(py < pe)
+                {
+                    pr = (px + py) * 2 + ybuffersize;
+                    pb = pr + 1;
+
+                    currcr = in[pr] & 0xFF;
+                    currcb = in[pb] & 0xFF;
+
+                    if((currcb>=77) && (currcb<=127) &&
+                       (currcr>=133) && (currcr<=173))
+                    {
+                        acum++;
+                    }
+
+                                    px ++;
+
+                                    if(px >= (x + cXsize))
+                    {
+                                            px = x;
+                                            py += W_;
+                                    }
+                            }
+
+                            if(acum > pThresh)
+                {
+                    s = 0xFF;
+                }
+                else
+                {
+                    s = 0x00;
+                }
+
+                            py = y * W_;
+
+                            while(py < pe)
+                {
+
+                                    this.buffer.put(px + py, (byte)s);
+                                    px++;
+
+                                    if(px >= (x + cXsize))
+                    {
+                                            px = x;
+                                            py += W_;
+                                    }
+                            }
+                    }
+            }
+    }
+
+
+    @Override
+    public void onDraw(Canvas canvas)
+    {
+        super.onDraw(canvas);
+
+        if(camera != null)
+        {
+            float cposx;
+            float cposy;
+
+            this.cursorposx += (this.weightx - this.cursorposx) / 5;
+            this.cursorposy += (this.weighty - this.cursorposy) / 5;
+
+            cposx = this.cursorposx * ((float)canvas.getWidth()) /
+            ((float)this.bufferwidth);
+
+            cposy = this.cursorposy * ((float)canvas.getHeight()) /
+            ((float)this.bufferheight);
+
+            canvas.drawCircle(cposx, cposy, this.bufferheight * 0.2f, this.paint);
+        }
+    }
+
+
+    public void surfaceCreated(SurfaceHolder holder)
+    {
+        this.setWillNotDraw(false);
+
+        this.camera = Camera.open();
+
+        try
+        {
+            this.camera.setPreviewDisplay(holder);
+            this.camera.setPreviewCallback(this.previewcallback);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+
+
+        if(!this.initPreviewSize())
+        {
+            Log.e("HANDH", "No suitable preview size found.");
+        }
+    }
+
+
+    private boolean initPreviewSize()
+    {
+        int i;
+        int width;
+        int height;
+
+        Camera.Parameters parameters;
+        List<Camera.Size> previewsizes;
+
+        parameters = this.camera.getParameters();
+        previewsizes = parameters.getSupportedPreviewSizes();
+
+        i = 0;
+        while(i < previewsizes.size())
+        {
+            width = previewsizes.get(i).width;
+            height = previewsizes.get(i).height;
+
+            Log.d("HANDH", "size(" + i + ") " + width + " , " + height);
+
+            if((width % 16) == 0 && (height % 16) == 0)
+            {
+                this.bufferwidth = width / 2;
+                this.bufferheight = height / 2;
+                this.buffer = ByteBuffer.allocate((width * height) / 4);
+
+                parameters.setPreviewSize(width, height);
+
+                this.camera.setParameters(parameters);
+
+                return true;
+            }
+            i++;
+        }
+
+        return false;
+    }
+
+
+    public void surfaceDestroyed(SurfaceHolder holder)
+    {
+        this.camera.stopPreview();
+        this.camera.setPreviewCallback(null);
+        this.camera.release();
+        this.camera = null;
+    }
+
+
+    public void surfaceChanged(SurfaceHolder holder, int format, int w, int h)
+    {
+        this.camera.startPreview();
+    }
+}
