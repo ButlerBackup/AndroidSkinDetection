@@ -169,12 +169,12 @@ implements SurfaceHolder.Callback
     private void gridEval(byte[] in, final int cXsize, final int cYsize,
     final int pThresh)
     {
-            int px;
+	    int px;
         int py;
         int pe;
         int acum;
 
-            int x;
+	    int x;
         int y;
         int s;
 
@@ -189,17 +189,17 @@ implements SurfaceHolder.Callback
 
         int ybuffersize = W_ * H_ * 4;
 
-            for(x = 0; x < W_; x += cXsize)
+	    for(x = 0; x < W_; x += cXsize)
         {
-                    for(y = 0; y < H_; y += cYsize)
+		    for(y = 0; y < H_; y += cYsize)
             {
-                            px = x;
-                            py = y * W_;
-                            pe = py + cYsize * W_;
+			    px = x;
+			    py = y * W_;
+			    pe = py + cYsize * W_;
 
-                            acum = 0;
+			    acum = 0;
 
-                            while(py < pe)
+			    while(py < pe)
                 {
                     pr = (px + py) * 2 + ybuffersize;
                     pb = pr + 1;
@@ -213,16 +213,16 @@ implements SurfaceHolder.Callback
                         acum++;
                     }
 
-                                    px ++;
+				    px ++;
 
-                                    if(px >= (x + cXsize))
+				    if(px >= (x + cXsize))
                     {
-                                            px = x;
-                                            py += W_;
-                                    }
-                            }
+					    px = x;
+					    py += W_;
+				    }
+			    }
 
-                            if(acum > pThresh)
+			    if(acum > pThresh)
                 {
                     s = 0xFF;
                 }
@@ -231,22 +231,22 @@ implements SurfaceHolder.Callback
                     s = 0x00;
                 }
 
-                            py = y * W_;
+			    py = y * W_;
 
-                            while(py < pe)
+			    while(py < pe)
                 {
 
-                                    this.buffer.put(px + py, (byte)s);
-                                    px++;
+				    this.buffer.put(px + py, (byte)s);
+				    px++;
 
-                                    if(px >= (x + cXsize))
+				    if(px >= (x + cXsize))
                     {
-                                            px = x;
-                                            py += W_;
-                                    }
-                            }
-                    }
-            }
+					    px = x;
+					    py += W_;
+				    }
+			    }
+		    }
+	    }
     }
 
 
